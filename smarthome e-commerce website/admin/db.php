@@ -251,6 +251,135 @@ function updateProductStock(mysqli $conn, int $id, int $qty): bool {
 }
 
 
+
+//just practice 
+
+function uploadProductImage($fileKey = 'product_image') {
+    if (empty($_FILES[$fileKey]['name'])) return '';
+ 
+    $file     = $_FILES[$fileKey];
+    $origName = $file['name'];
+    $tmpPath  = $file['tmp_name'];
+    $size     = $file['size'];
+    $mime     = mime_content_type($tmpPath);
+    $ext      = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
+ 
+    // Validate
+    if ($file['error'] !== UPLOAD_ERR_OK)
+        return ['error' => 'Upload error: ' . $file['error']];
+    if ($size > UPLOAD_MAX_MB * 1024 * 1024)
+        return ['error' => 'File too large. Max ' . UPLOAD_MAX_MB . 'MB allowed.'];
+    if (!in_array($mime, ALLOWED_TYPES))
+        return ['error' => 'Invalid file type. Allowed: JPG, PNG, WEBP, GIF.'];
+    if (!in_array($ext, ALLOWED_EXT))
+        return ['error' => 'Invalid file extension.'];
+ 
+    // Generate unique filename
+    $newName = 'product_' . uniqid() . '_' . time() . '.' . $ext;
+    $destPath = UPLOAD_DIR . $newName;
+ 
+    if (!move_uploaded_file($tmpPath, $destPath))
+        return ['error' => 'Failed to save file. Check folder permissions.'];
+ 
+    return $destPath;
+}
+ 
+// ── Delete old image ──────────────────────────────────────────
+function deleteProductImage($path) {
+    if ($path && file_exists($path) && strpos($path, UPLOAD_DIR) === 0) {
+        unlink($path);
+    }
+}
+ 
+// ============================================================
+//  POST ACTION HANDLERS
+// ============================================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+ 
+    // ── Add Product (with image upload) ──────────────────────
+    if ($action === 'add_product') {
+        $name   = $conn->real_escape_string(trim($_POST['name']        ?? ''));
+        $catid  = (int)($_POST['category_id'] ?? 0);
+        $brand  = $conn->real_escape_string(trim($_POST['brand']       ?? ''));
+        $desc   = $conn->real_escape_string(trim($_POST['description'] ?? ''));
+        $price  = (float)($_POST['price']  ?? 0);
+        $stock  = (int)($_POST['stock']    ?? 0);
+        $status = in_array($_POST['status'] ?? '', ['active','inactive']) ? $_POST['status'] : 'active';
+        $imgUrl = $conn->real_escape_string(trim($_POST['image_url']   ?? ''));
+ 
+        if (!$name || !$catid || $price <= 0) {
+            $_SESSION['toast']      = 'Please fill in Name, Category and Price.';
+            $_SESSION['toast_type'] = 'error';
+            header('Location: dashboard.php?page=products'); exit;
+        }
+ 
+        // Handle image: uploaded file takes priority over URL
+        $imagePath = '';
+        if (!empty($_FILES['product_image']['name'])) {
+            $upload = uploadProductImage('product_image');
+            if (is_array($upload) && isset($upload['error'])) {
+                $_SESSION['toast']      = $upload['error'];
+                $_SESSION['toast_type'] = 'error';
+                header('Location: dashboard.php?page=products'); exit;
+            }
+            $imagePath = $conn->real_escape_string($upload);
+        } elseif ($imgUrl) {
+            $imagePath = $imgUrl; // use external URL
+        }
+ 
+        $conn->query("INSERT INTO PRODUCTS
+            (CategoryID,ProductName,Description,Brand,Price,StockQuantity,ProductImage,Status)
+            VALUES ($catid,'$name','$desc','$brand',$price,$stock,'$imagePath','$status')");
+ 
+        $_SESSION['toast']      = 'Product added successfully!';
+        $_SESSION['toast_type'] = 'success';
+        header('Location: dashboard.php?page=products'); exit;
+    }
+ 
+    // ── Update Product Image ──────────────────────────────────
+    if ($action === 'update_product_image') {
+        $pid = (int)($_POST['product_id'] ?? 0);
+        if (!$pid) { header('Location: dashboard.php?page=products'); exit; }
+ 
+        // Get old image
+        $old = $conn->query("SELECT ProductImage FROM PRODUCTS WHERE ProductID=$pid")->fetch_assoc();
+        $oldImg = $old['ProductImage'] ?? '';
+ 
+        $newImg = '';
+        if (!empty($_FILES['product_image']['name'])) {
+            $upload = uploadProductImage('product_image');
+            if (is_array($upload) && isset($upload['error'])) {
+                $_SESSION['toast']      = $upload['error'];
+                $_SESSION['toast_type'] = 'error';
+                header('Location: dashboard.php?page=products'); exit;
+            }
+            $newImg = $conn->real_escape_string($upload);
+            deleteProductImage($oldImg);
+        } elseif (!empty($_POST['image_url'])) {
+            $newImg = $conn->real_escape_string(trim($_POST['image_url']));
+        }
+ 
+        if ($newImg) {
+            $conn->query("UPDATE PRODUCTS SET ProductImage='$newImg' WHERE ProductID=$pid");
+            $_SESSION['toast'] = 'Product image updated!';
+        } else {
+            $_SESSION['toast']      = 'No image provided.';
+            $_SESSION['toast_type'] = 'error';
+        }
+        header('Location: dashboard.php?page=products'); exit;
+    }
+ 
+    // ── Delete Product ────────────────────────────────────────
+    if ($action === 'delete_product' && isset($_POST['product_id'])) {
+        $id  = (int)$_POST['product_id'];
+        $row = $conn->query("SELECT ProductImage FROM PRODUCTS WHERE ProductID=$id")->fetch_assoc();
+        deleteProductImage($row['ProductImage'] ?? '');
+        $conn->query("DELETE FROM PRODUCTS WHERE ProductID=$id");
+        $_SESSION['toast'] = 'Product deleted.';
+        header('Location: dashboard.php?page=products'); exit;
+    }
+
 // ============================================================
 //  CATEGORIES QUERIES
 // ============================================================

@@ -43,6 +43,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             header('Location: dashboard.php?page=products'); exit;
 
+
+
+            //practice
+         case 'add_product_photo':
+            if (!empty($_POST['name']) && !empty($_POST['photopath']) && !empty($_POST['phototype'])) {
+                addProduct_photo($conn, [
+                    'product_id' => $_POST['product_id'],
+                    'photopath'        => $_POST['photopath'],
+                    'phototype'       => $_POST['phototype']        ?? '',
+                    'alttext' => $_POST['alttext']  ?? '',
+                    'sortorder'       => $_POST['sortorder']       ?? 0,
+                    'isprimary'       => $_POST['isprimary']        ?? 0,
+                    'uploadedat'      => $_POST['uploadedat']       ?? 'active',
+                ]);
+                setToast('Product_image added successfully!');
+            } else {
+                setToast('Please fill in all required fields.', 'error');
+            }
+            header('Location: dashboard.php?page=product_photos'); exit;
+   
+
+
+//old
         case 'delete_product':
             if (!empty($_POST['product_id'])) {
                 deleteProduct($conn, (int)$_POST['product_id']);
