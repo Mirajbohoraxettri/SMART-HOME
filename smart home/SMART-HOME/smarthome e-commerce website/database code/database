@@ -1,0 +1,347 @@
+-- ============================================================
+--  SMARTTECH_DB  |  MySQL Schema  (with PRODUCT_PHOTOS table)
+-- ============================================================
+
+CREATE DATABASE IF NOT EXISTS SMARTTECH_DB
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+USE SMARTTECH_DB;
+
+-- ------------------------------------------------------------
+-- USERS
+-- ------------------------------------------------------------
+CREATE TABLE USERS (
+  UserID      INT            NOT NULL AUTO_INCREMENT,
+  FullName    VARCHAR(100)   NOT NULL,
+  Email       VARCHAR(150)   NOT NULL UNIQUE,
+  Password    VARCHAR(255)   NOT NULL,
+  Phone       VARCHAR(20),
+  Address     TEXT,
+  Role        ENUM('customer','admin') NOT NULL DEFAULT 'customer',
+  CreatedAt   DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (UserID)
+);
+
+-- ------------------------------------------------------------
+-- CATEGORIES
+-- ------------------------------------------------------------
+CREATE TABLE CATEGORIES (
+  CategoryID    INT           NOT NULL AUTO_INCREMENT,
+  CategoryName  VARCHAR(100)  NOT NULL,
+  CategoryImage VARCHAR(255),
+  PRIMARY KEY (CategoryID)
+);
+
+-- ------------------------------------------------------------
+-- PRODUCTS
+-- ------------------------------------------------------------
+CREATE TABLE PRODUCTS (
+  ProductID     INT            NOT NULL AUTO_INCREMENT,
+  CategoryID    INT            NOT NULL,
+  ProductName   VARCHAR(150)   NOT NULL,
+  Description   TEXT,
+  Brand         VARCHAR(100),
+  Price         DECIMAL(10,2)  NOT NULL,
+  StockQuantity INT            NOT NULL DEFAULT 0,
+  ProductImage  VARCHAR(255),           -- primary/thumbnail image path
+  Status        ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  CreatedAt     DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (ProductID),
+  CONSTRAINT fk_products_category
+    FOREIGN KEY (CategoryID) REFERENCES CATEGORIES (CategoryID)
+    ON UPDATE CASCADE ON DELETE RESTRICT
+);
+
+-- ------------------------------------------------------------
+-- PRODUCT_PHOTOS
+-- Photo gallery for each product (multiple images per product)
+-- ------------------------------------------------------------
+CREATE TABLE PRODUCT_PHOTOS (
+  PhotoID       INT            NOT NULL AUTO_INCREMENT,
+  ProductID     INT            NOT NULL,
+  PhotoPath     VARCHAR(255)   NOT NULL,           -- file path or URL
+  PhotoType     ENUM('upload','url') NOT NULL DEFAULT 'upload',
+  AltText       VARCHAR(200),                      -- accessibility / SEO
+  SortOrder     INT            NOT NULL DEFAULT 0, -- display order (0 = first)
+  IsPrimary     TINYINT(1)     NOT NULL DEFAULT 0, -- 1 = main thumbnail
+  UploadedAt    DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (PhotoID),
+  CONSTRAINT fk_photos_product
+    FOREIGN KEY (ProductID) REFERENCES PRODUCTS (ProductID)
+    ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+-- ------------------------------------------------------------
+-- CART
+-- ------------------------------------------------------------
+CREATE TABLE CART (
+  CartID     INT      NOT NULL AUTO_INCREMENT,
+  UserID     INT      NOT NULL,
+  CreatedAt  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (CartID),
+  CONSTRAINT fk_cart_user
+    FOREIGN KEY (UserID) REFERENCES USERS (UserID)
+    ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+-- ------------------------------------------------------------
+-- CART_ITEMS
+-- ------------------------------------------------------------
+CREATE TABLE CART_ITEMS (
+  CartItemID  INT      NOT NULL AUTO_INCREMENT,
+  CartID      INT      NOT NULL,
+  ProductID   INT      NOT NULL,
+  Quantity    INT      NOT NULL DEFAULT 1,
+  AddedAt     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (CartItemID),
+  CONSTRAINT fk_cartitems_cart
+    FOREIGN KEY (CartID)    REFERENCES CART     (CartID)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT fk_cartitems_product
+    FOREIGN KEY (ProductID) REFERENCES PRODUCTS (ProductID)
+    ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+-- ------------------------------------------------------------
+-- ORDERS
+-- ------------------------------------------------------------
+CREATE TABLE ORDERS (
+  OrderID         INT           NOT NULL AUTO_INCREMENT,
+  UserID          INT           NOT NULL,
+  TotalAmount     DECIMAL(10,2) NOT NULL,
+  OrderStatus     ENUM('pending','processing','shipped','delivered','cancelled')
+                  NOT NULL DEFAULT 'pending',
+  ShippingAddress TEXT          NOT NULL,
+  OrderDate       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (OrderID),
+  CONSTRAINT fk_orders_user
+    FOREIGN KEY (UserID) REFERENCES USERS (UserID)
+    ON UPDATE CASCADE ON DELETE RESTRICT
+);
+
+-- ------------------------------------------------------------
+-- ORDER_ITEMS
+-- ------------------------------------------------------------
+CREATE TABLE ORDER_ITEMS (
+  OrderItemID  INT           NOT NULL AUTO_INCREMENT,
+  OrderID      INT           NOT NULL,
+  ProductID    INT           NOT NULL,
+  Quantity     INT           NOT NULL,
+  Price        DECIMAL(10,2) NOT NULL,   -- price locked at purchase time
+  PRIMARY KEY (OrderItemID),
+  CONSTRAINT fk_orderitems_order
+    FOREIGN KEY (OrderID)   REFERENCES ORDERS   (OrderID)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT fk_orderitems_product
+    FOREIGN KEY (ProductID) REFERENCES PRODUCTS (ProductID)
+    ON UPDATE CASCADE ON DELETE RESTRICT
+);
+
+-- ------------------------------------------------------------
+-- PAYMENTS
+-- ------------------------------------------------------------
+CREATE TABLE PAYMENTS (
+  PaymentID      INT      NOT NULL AUTO_INCREMENT,
+  OrderID        INT      NOT NULL UNIQUE,
+  PaymentMethod  ENUM('credit_card','debit_card','paypal','cash_on_delivery','bank_transfer')
+                 NOT NULL,
+  PaymentStatus  ENUM('pending','completed','failed','refunded')
+                 NOT NULL DEFAULT 'pending',
+  PaymentDate    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (PaymentID),
+  CONSTRAINT fk_payments_order
+    FOREIGN KEY (OrderID) REFERENCES ORDERS (OrderID)
+    ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+-- ------------------------------------------------------------
+-- REVIEWS
+-- ------------------------------------------------------------
+CREATE TABLE REVIEWS (
+  ReviewID    INT      NOT NULL AUTO_INCREMENT,
+  ProductID   INT      NOT NULL,
+  UserID      INT      NOT NULL,
+  Rating      TINYINT  NOT NULL CHECK (Rating BETWEEN 1 AND 5),
+  Comment     TEXT,
+  ReviewDate  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (ReviewID),
+  CONSTRAINT fk_reviews_product
+    FOREIGN KEY (ProductID) REFERENCES PRODUCTS (ProductID)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT fk_reviews_user
+    FOREIGN KEY (UserID) REFERENCES USERS (UserID)
+    ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+-- ============================================================
+--  INDEXES
+-- ============================================================
+CREATE INDEX idx_products_category   ON PRODUCTS       (CategoryID);
+CREATE INDEX idx_products_status     ON PRODUCTS       (Status);
+CREATE INDEX idx_photos_product      ON PRODUCT_PHOTOS (ProductID);
+CREATE INDEX idx_photos_primary      ON PRODUCT_PHOTOS (ProductID, IsPrimary);
+CREATE INDEX idx_photos_sort         ON PRODUCT_PHOTOS (ProductID, SortOrder);
+CREATE INDEX idx_cart_user           ON CART           (UserID);
+CREATE INDEX idx_cartitems_cart      ON CART_ITEMS     (CartID);
+CREATE INDEX idx_cartitems_product   ON CART_ITEMS     (ProductID);
+CREATE INDEX idx_orders_user         ON ORDERS         (UserID);
+CREATE INDEX idx_orders_status       ON ORDERS         (OrderStatus);
+CREATE INDEX idx_orderitems_order    ON ORDER_ITEMS    (OrderID);
+CREATE INDEX idx_orderitems_product  ON ORDER_ITEMS    (ProductID);
+CREATE INDEX idx_reviews_product     ON REVIEWS        (ProductID);
+CREATE INDEX idx_reviews_user        ON REVIEWS        (UserID);
+
+-- ============================================================
+--  TRIGGERS
+--  Keep PRODUCTS.ProductImage in sync with PRODUCT_PHOTOS
+-- ============================================================
+
+DELIMITER $$
+
+-- After a photo is inserted: if it's primary, sync to PRODUCTS.ProductImage
+CREATE TRIGGER trg_photos_after_insert
+AFTER INSERT ON PRODUCT_PHOTOS
+FOR EACH ROW
+BEGIN
+  IF NEW.IsPrimary = 1 THEN
+    -- demote any other primary photo for this product
+    UPDATE PRODUCT_PHOTOS
+      SET IsPrimary = 0
+      WHERE ProductID = NEW.ProductID AND PhotoID != NEW.PhotoID;
+    -- sync thumbnail column
+    UPDATE PRODUCTS SET ProductImage = NEW.PhotoPath WHERE ProductID = NEW.ProductID;
+  END IF;
+
+  -- If this is the FIRST photo for the product, auto-promote it to primary
+  IF (SELECT COUNT(*) FROM PRODUCT_PHOTOS WHERE ProductID = NEW.ProductID) = 1 THEN
+    UPDATE PRODUCT_PHOTOS SET IsPrimary = 1 WHERE PhotoID = NEW.PhotoID;
+    UPDATE PRODUCTS SET ProductImage = NEW.PhotoPath WHERE ProductID = NEW.ProductID;
+  END IF;
+END$$
+
+-- After a photo is deleted: if it was primary, promote the next one
+CREATE TRIGGER trg_photos_after_delete
+AFTER DELETE ON PRODUCT_PHOTOS
+FOR EACH ROW
+BEGIN
+  IF OLD.IsPrimary = 1 THEN
+    -- promote the lowest SortOrder remaining photo
+    SET @nextPhoto = (
+      SELECT PhotoPath FROM PRODUCT_PHOTOS
+      WHERE ProductID = OLD.ProductID
+      ORDER BY SortOrder ASC, PhotoID ASC
+      LIMIT 1
+    );
+    SET @nextID = (
+      SELECT PhotoID FROM PRODUCT_PHOTOS
+      WHERE ProductID = OLD.ProductID
+      ORDER BY SortOrder ASC, PhotoID ASC
+      LIMIT 1
+    );
+    IF @nextID IS NOT NULL THEN
+      UPDATE PRODUCT_PHOTOS SET IsPrimary = 1 WHERE PhotoID = @nextID;
+      UPDATE PRODUCTS SET ProductImage = @nextPhoto WHERE ProductID = OLD.ProductID;
+    ELSE
+      -- no photos left, clear thumbnail
+      UPDATE PRODUCTS SET ProductImage = NULL WHERE ProductID = OLD.ProductID;
+    END IF;
+  END IF;
+END$$
+
+-- After a photo is updated to primary: demote others and sync
+CREATE TRIGGER trg_photos_after_update
+AFTER UPDATE ON PRODUCT_PHOTOS
+FOR EACH ROW
+BEGIN
+  IF NEW.IsPrimary = 1 AND OLD.IsPrimary = 0 THEN
+    UPDATE PRODUCT_PHOTOS
+      SET IsPrimary = 0
+      WHERE ProductID = NEW.ProductID AND PhotoID != NEW.PhotoID;
+    UPDATE PRODUCTS SET ProductImage = NEW.PhotoPath WHERE ProductID = NEW.ProductID;
+  END IF;
+END$$
+
+DELIMITER ;
+
+-- ============================================================
+--  STORED PROCEDURES
+-- ============================================================
+
+DELIMITER $$
+
+-- Add a photo and optionally make it primary
+CREATE PROCEDURE sp_AddProductPhoto(
+  IN  p_ProductID  INT,
+  IN  p_PhotoPath  VARCHAR(255),
+  IN  p_PhotoType  VARCHAR(10),
+  IN  p_AltText    VARCHAR(200),
+  IN  p_SortOrder  INT,
+  IN  p_IsPrimary  TINYINT,
+  OUT p_PhotoID    INT
+)
+BEGIN
+  INSERT INTO PRODUCT_PHOTOS (ProductID, PhotoPath, PhotoType, AltText, SortOrder, IsPrimary)
+  VALUES (p_ProductID, p_PhotoPath, p_PhotoType, p_AltText, p_SortOrder, p_IsPrimary);
+  SET p_PhotoID = LAST_INSERT_ID();
+END$$
+
+-- Set a specific photo as primary for a product
+CREATE PROCEDURE sp_SetPrimaryPhoto(
+  IN p_ProductID INT,
+  IN p_PhotoID   INT
+)
+BEGIN
+  UPDATE PRODUCT_PHOTOS SET IsPrimary = 0 WHERE ProductID = p_ProductID;
+  UPDATE PRODUCT_PHOTOS SET IsPrimary = 1 WHERE PhotoID   = p_PhotoID AND ProductID = p_ProductID;
+  UPDATE PRODUCTS
+    SET ProductImage = (SELECT PhotoPath FROM PRODUCT_PHOTOS WHERE PhotoID = p_PhotoID)
+    WHERE ProductID  = p_ProductID;
+END$$
+
+-- Delete a photo record (trigger handles promotion of next primary)
+CREATE PROCEDURE sp_DeleteProductPhoto(
+  IN p_PhotoID  INT,
+  IN p_FilePath VARCHAR(255)  -- pass to PHP to delete file from disk
+)
+BEGIN
+  DELETE FROM PRODUCT_PHOTOS WHERE PhotoID = p_PhotoID;
+  -- PHP should also call unlink($p_FilePath) after this procedure
+END$$
+
+-- Get all photos for a product, primary first
+CREATE PROCEDURE sp_GetProductPhotos(IN p_ProductID INT)
+BEGIN
+  SELECT PhotoID, PhotoPath, PhotoType, AltText, SortOrder, IsPrimary, UploadedAt
+  FROM PRODUCT_PHOTOS
+  WHERE ProductID = p_ProductID
+  ORDER BY IsPrimary DESC, SortOrder ASC, PhotoID ASC;
+END$$
+
+DELIMITER ;
+
+-- ============================================================
+--  SAMPLE DATA  (optional — remove in production)
+-- ============================================================
+
+-- Admin user  (password: admin123)
+INSERT INTO USERS (FullName, Email, Password, Role) VALUES
+('Admin User', 'admin@smarttech.com',
+ '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin');
+
+-- Categories
+INSERT INTO CATEGORIES (CategoryName) VALUES
+('Laptops'), ('Audio'), ('Monitors'), ('Peripherals'), ('Accessories'), ('Gaming');
+
+-- Sample product
+INSERT INTO PRODUCTS (CategoryID, ProductName, Description, Brand, Price, StockQuantity, Status)
+VALUES (1, 'UltraBook Pro 15', 'High-performance laptop with 16GB RAM and 512GB SSD.',
+        'TechCore', 1299.00, 25, 'active');
+
+-- Sample photo for the product (PhotoID auto = 1, triggers set it as primary)
+INSERT INTO PRODUCT_PHOTOS (ProductID, PhotoPath, PhotoType, AltText, SortOrder, IsPrimary)
+VALUES (1, 'uploads/products/sample_ultrabook.jpg', 'upload', 'UltraBook Pro 15 front view', 0, 1);
+
+-- ============================================================
+--  END OF SCHEMA
+-- ============================================================
